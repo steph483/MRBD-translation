@@ -293,7 +293,7 @@ export function TranslationApp() {
             >
               <ListItem
                 title={phrase.english}
-                subtitle={phrase.german}
+                subtitle={`Translation: ${phrase.german}`}
                 subtitleTextColor={SubtitleTextColor.SECONDARY}
                 onClick={() => onUseSaved(phrase)}
               />
