@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+} from "react";
 import {
   Button,
   ButtonGroup,
@@ -11,10 +18,12 @@ import {
   TextStyle,
   TextView,
   VerticalList,
+  type ButtonHandle,
 } from "@wearables-ui-toolkit/mrbd";
 import {
   deleteIcon,
   hearIcon,
+  savedFilledIcon,
   savedTabIcon,
   translateTabIcon,
 } from "../icons";
@@ -37,6 +46,8 @@ const NAV_ITEMS = [
 
 export function TranslationApp() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const actionDockRef = useRef<HTMLDivElement | null>(null);
+  const hearButtonRef = useRef<ButtonHandle | null>(null);
   const [pageIndex, setPageIndex] = useState(PAGE_TRANSLATE);
   const [english, setEnglish] = useState("");
   const [current, setCurrent] = useState<Phrase | null>(null);
@@ -190,6 +201,22 @@ export function TranslationApp() {
     [updateStatus],
   );
 
+  /** When directional focus enters the bottom strip, land on Hear first. */
+  const onActionDockFocusCapture = useCallback((event: FocusEvent) => {
+    const dock = actionDockRef.current;
+    const hearEl = hearButtonRef.current?.getElement();
+    if (!dock || !hearEl) return;
+    const fromOutside =
+      !(event.relatedTarget instanceof Node) ||
+      !dock.contains(event.relatedTarget);
+    if (!fromOutside) return;
+    if (hearEl.contains(event.target as Node)) return;
+    if (hearEl.getAttribute("aria-disabled") === "true") return;
+    queueMicrotask(() => {
+      hearEl.focus();
+    });
+  }, []);
+
   return (
     <SubNavigationPager
       items={[...NAV_ITEMS]}
@@ -210,12 +237,6 @@ export function TranslationApp() {
             >
               No saved phrases
             </TextView>
-            <Button
-              title="Go to Translate"
-              icon={translateTabIcon}
-              alwaysShowText
-              onClick={() => setPageIndex(PAGE_TRANSLATE)}
-            />
           </div>
         ) : (
           saved.map((phrase) => (
@@ -304,9 +325,15 @@ export function TranslationApp() {
           ) : null}
         </div>
 
-        <div className="action-dock" aria-label="Translation actions">
+        <div
+          ref={actionDockRef}
+          className="action-dock"
+          aria-label="Translation actions"
+          onFocusCapture={onActionDockFocusCapture}
+        >
           <ButtonGroup alignment={ButtonGroupAlignment.CENTER}>
             <Button
+              ref={hearButtonRef}
               title="Hear"
               icon={hearIcon}
               alwaysShowText
@@ -325,7 +352,7 @@ export function TranslationApp() {
             />
             <Button
               title={alreadySaved ? "Saved" : "Save"}
-              icon={savedTabIcon}
+              icon={alreadySaved ? savedFilledIcon : savedTabIcon}
               alwaysShowText
               disabled={!current || alreadySaved}
               onClick={onSave}
