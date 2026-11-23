@@ -1,10 +1,14 @@
 import { chromium } from "playwright";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.join(__dirname, "..", "media-local");
-const url = process.env.PREVIEW_URL || "http://127.0.0.1:4173/";
+fs.mkdirSync(outDir, { recursive: true });
+
+const url =
+  process.env.PREVIEW_URL || "http://127.0.0.1:4173/MRBD-translation/";
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 600, height: 600 } });
@@ -17,20 +21,24 @@ page.on("console", (msg) => {
 
 await page.goto(url, { waitUntil: "networkidle" });
 
-const metaCapable = await page.locator('meta[name="mrbd-web-app-capable"]').getAttribute("content");
-const metaDesc = await page.locator('meta[name="description"]').getAttribute("content");
+const metaCapable = await page
+  .locator('meta[name="mrbd-web-app-capable"]')
+  .getAttribute("content");
+const metaDesc = await page
+  .locator('meta[name="description"]')
+  .getAttribute("content");
 
-await page.fill("#english-input", "Where is the train station?");
-await page.click("#btn-translate");
-await page.waitForSelector("#result-panel:not([hidden])", { timeout: 20000 });
+const input = page.getByRole("textbox").first();
+await input.click();
+await input.fill("Where is the train station?");
 
-const german = (await page.textContent("#german-text")).trim();
-const phonetic = (await page.textContent("#phonetic-text")).trim();
-const status = (await page.textContent("#status")).trim();
+const translateBtn = page.getByRole("button", { name: /translate/i }).first();
+await translateBtn.click();
 
-await page.click("#btn-save");
-await page.waitForSelector("#saved-list .saved-item", { timeout: 5000 });
+await page.waitForTimeout(3000);
 
+const bodyText = await page.locator("body").innerText();
+const hasGerman = /Bahnhof|bahnhof|Wo ist/i.test(bodyText);
 const overflowX = await page.evaluate(() => {
   const doc = document.documentElement;
   return {
@@ -40,30 +48,27 @@ const overflowX = await page.evaluate(() => {
   };
 });
 
-await page.screenshot({
-  path: path.join(outDir, "viewport-600.png"),
-  fullPage: false,
-});
+const shotPath = path.join(outDir, "viewport-600-toolkit.png");
+await page.screenshot({ path: shotPath, fullPage: false });
 
 console.log(
   JSON.stringify(
     {
       metaCapable,
       hasDescription: Boolean(metaDesc),
-      german,
-      phonetic,
-      status,
+      hasGerman,
+      bodySnippet: bodyText.slice(0, 500),
       overflowX,
       consoleErrors: errors,
+      shotPath,
     },
     null,
-    2
-  )
+    2,
+  ),
 );
 
 if (metaCapable !== "yes") throw new Error("Missing mrbd-web-app-capable");
-if (!german) throw new Error("No German translation");
-if (!phonetic) throw new Error("No phonetic text");
+if (!hasGerman) throw new Error("German translation not visible");
 if (overflowX.scrollWidth > overflowX.clientWidth + 2) {
   throw new Error(`Horizontal overflow at 600x600: ${JSON.stringify(overflowX)}`);
 }

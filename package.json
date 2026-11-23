@@ -1,15 +1,30 @@
 {
   "name": "mrbd-translation",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "type": "module",
   "description": "English to German translation helper for Meta Ray-Ban Display",
   "scripts": {
-    "preview": "npx --yes serve -l 4173 .",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --base /MRBD-translation/",
     "smoke": "node ./scripts/smoke-600.mjs"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/steph483/MRBD-translation.git"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@wearables-ui-toolkit/mrbd": "^130.33.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.6"
+  }
 }

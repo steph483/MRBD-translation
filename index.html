@@ -1,79 +1,18 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
+    <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
       content="English to German translation helper with phonetic pronunciation and speech for Meta Ray-Ban Display."
     />
     <meta name="mrbd-web-app-capable" content="yes" />
+    <link rel="icon" href="data:," />
     <title>EN → DE Translator</title>
-    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="app-shell">
-      <main class="content" id="main">
-        <header class="header">
-          <h1>EN → DE</h1>
-          <p class="tagline">Type, hear, and save phrases</p>
-        </header>
-
-        <section class="compose" aria-labelledby="compose-label">
-          <label id="compose-label" for="english-input">English phrase</label>
-          <textarea
-            id="english-input"
-            name="english"
-            rows="3"
-            maxlength="280"
-            enterkeyhint="done"
-            autocomplete="off"
-            autocorrect="off"
-            spellcheck="true"
-            placeholder="Hello, how are you?"
-          ></textarea>
-
-          <div class="actions" role="group" aria-label="Translate actions">
-            <button type="button" id="btn-translate" class="btn primary">
-              Translate
-            </button>
-            <button type="button" id="btn-hear" class="btn" disabled>
-              Hear German
-            </button>
-            <button type="button" id="btn-save" class="btn" disabled>
-              Save
-            </button>
-          </div>
-        </section>
-
-        <section class="result" aria-live="polite" aria-atomic="true">
-          <p id="status" class="status" role="status"></p>
-          <div id="result-panel" class="result-panel" hidden>
-            <div class="field">
-              <span class="label">German</span>
-              <p id="german-text" class="value german"></p>
-            </div>
-            <div class="field">
-              <span class="label">Sounds like</span>
-              <p id="phonetic-text" class="value phonetic"></p>
-            </div>
-            <div class="actions compact" role="group" aria-label="Replay">
-              <button type="button" id="btn-hear-phonetic" class="btn">
-                Hear sounds-like
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section class="saved" aria-labelledby="saved-heading">
-          <h2 id="saved-heading">Saved phrases</h2>
-          <ul id="saved-list" class="saved-list"></ul>
-          <p id="saved-empty" class="empty">No saved phrases yet.</p>
-        </section>
-      </main>
-    </div>
-
-    <audio id="tts-audio" preload="none" referrerpolicy="no-referrer" hidden></audio>
-    <script type="module" src="./app.js"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

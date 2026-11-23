@@ -1,0 +1,60 @@
+:root,
+html {
+  background-color: var(--uit-color-background-window);
+  inline-size: 100%;
+  block-size: 100%;
+  margin: 0;
+}
+
+body,
+#root {
+  inline-size: 100%;
+  block-size: 100%;
+  margin: 0;
+  background-color: var(--uit-color-background-window);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.page-shell {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  block-size: 100%;
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
+.content-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uit-spacing-small);
+  min-inline-size: 0;
+  padding-block: var(--uit-spacing-small);
+  padding-inline: var(--uit-spacing-large);
+}
+
+.composer {
+  min-inline-size: 0;
+}
+
+.result-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uit-spacing-2xs);
+  min-inline-size: 0;
+}
+
+.action-dock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uit-spacing-2xs);
+  min-inline-size: 0;
+  padding-block-end: var(--uit-spacing-xsmall);
+  padding-inline: var(--uit-spacing-large);
+}
+
+.section-label {
+  padding-block-start: var(--uit-spacing-small);
+}

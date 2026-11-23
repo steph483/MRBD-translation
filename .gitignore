@@ -5,5 +5,4 @@ Thumbs.db
 node_modules/
 dist/
 media-local/
-package-lock.json
 *.log

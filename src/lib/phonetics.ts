@@ -3,10 +3,9 @@
  * so English speakers can pronounce it without IPA.
  */
 
-const DIGRAPH_RULES = [
+const DIGRAPH_RULES: Array<[RegExp, string]> = [
   [/tsch/gi, "ch"],
   [/sch/gi, "sh"],
-  [/tsch/gi, "ch"],
   [/ch(?=[eéií])/gi, "kh"],
   [/ch/gi, "kh"],
   [/ck/gi, "k"],
@@ -39,7 +38,7 @@ const DIGRAPH_RULES = [
   [/uh/gi, "oo"],
 ];
 
-const SINGLE_RULES = [
+const SINGLE_RULES: Array<[RegExp, string]> = [
   [/ß/g, "ss"],
   [/ä/gi, "eh"],
   [/ö/gi, "ur"],
@@ -55,7 +54,7 @@ const SINGLE_RULES = [
   [/s(?=[aouäöü])/gi, "z"],
 ];
 
-const WORD_OVERRIDES = {
+const WORD_OVERRIDES: Record<string, string> = {
   ich: "ikh",
   du: "doo",
   er: "air",
@@ -155,22 +154,23 @@ const WORD_OVERRIDES = {
   speisekarte: "SHPYE-zuh-kar-tuh",
 };
 
-function capitalizePhonetic(word) {
+function capitalizePhonetic(word: string): string {
   if (!word) return word;
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
-function syllabifyHint(token) {
-  // Light hyphenation for long respellings to aid reading.
+function syllabifyHint(token: string): string {
   if (token.includes("-") || token.length < 7) return token;
   return token
-    .replace(/([aeiouy]{1,2})([^aeiouy\-]{1,2})(?=[aeiouy])/gi, "$1$2-")
+    .replace(/([aeiouy]{1,2})([^aeiouy-]{1,2})(?=[aeiouy])/gi, "$1$2-")
     .replace(/-{2,}/g, "-")
     .replace(/^-|-$/g, "");
 }
 
-function respellToken(raw) {
-  const punctMatch = raw.match(/^([^A-Za-zÄÖÜäöüß]*)(.*?)([^A-Za-zÄÖÜäöüß]*)$/);
+function respellToken(raw: string): string {
+  const punctMatch = raw.match(
+    /^([^A-Za-zÄÖÜäöüß]*)(.*?)([^A-Za-zÄÖÜäöüß]*)$/,
+  );
   if (!punctMatch) return raw;
   const [, lead, core, trail] = punctMatch;
   if (!core) return raw;
@@ -179,7 +179,9 @@ function respellToken(raw) {
   if (WORD_OVERRIDES[key]) {
     const override = WORD_OVERRIDES[key];
     const cased =
-      core[0] === core[0].toUpperCase() ? capitalizePhonetic(override) : override;
+      core[0] === core[0].toUpperCase()
+        ? capitalizePhonetic(override)
+        : override;
     return `${lead}${cased}${trail}`;
   }
 
@@ -200,7 +202,7 @@ function respellToken(raw) {
   return `${lead}${out}${trail}`;
 }
 
-export function germanToEnglishPhonetic(germanText) {
+export function germanToEnglishPhonetic(germanText: string): string {
   if (!germanText || !germanText.trim()) return "";
   return germanText
     .split(/(\s+)/)

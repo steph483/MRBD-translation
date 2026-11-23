@@ -1,25 +1,29 @@
 # MRBD Translation (EN → DE)
 
-English → German helper for **Meta Ray-Ban Display** glasses: translate a phrase, see an English-friendly phonetic spelling, hear real German audio when online, and save favorites in `localStorage`.
+English → German helper for **Meta Ray-Ban Display**, built with Vite + React + TypeScript and Meta’s `@wearables-ui-toolkit/mrbd`.
 
 ## Features
 
-- Semantic `<textarea>` so the system composer (type / dictate / handwriting) works
+- Toolkit `InputTextView` for type / dictate / handwriting via the system composer
 - Free MyMemory translate API (no paid keys)
 - English phonetic “sounds like” respelling of the German
 - Network German TTS when online; falls back to phonetic + English `speechSynthesis`
 - Live translate + hear without saving
-- Saved phrase list with re-hear / delete
+- Saved phrase list in `localStorage`
 
-## Local preview
-
-Serve the folder over HTTP (ES modules):
+## Develop
 
 ```bash
-npx --yes serve -l 4173 .
+npm install
+npm run dev
 ```
 
-Open `http://localhost:4173` and set DevTools to **600 × 600**.
+Open the app and validate at **600 × 600** in DevTools.
+
+```bash
+npm run build
+npm run preview
+```
 
 ## GitHub Pages
 
@@ -27,21 +31,21 @@ Live URL:
 
 **https://steph483.github.io/MRBD-translation/**
 
-Hosting is **Deploy from branch `main` / `/ (root)`** (with `.nojekyll`). An Actions workflow is also present if you switch Pages source to GitHub Actions later.
+Vite `base` is `/MRBD-translation/`. Pages deploys the Vite `dist` output via GitHub Actions.
 
 ## Add on Meta Ray-Ban Display
 
 1. Enable Developer Mode in the Meta AI app
 2. **App Settings → Apps → Web Apps → Connect Web App**
-3. Paste the public HTTPS Pages URL and Save
-4. Open the app from the glasses app grid
+3. Paste `https://steph483.github.io/MRBD-translation/`
+4. Save → open from the glasses app grid
 
 ## MRBD notes
 
 - Meta tags: `mrbd-web-app-capable`, `description`
-- Dark / high-contrast UI for additive display
-- Layout sizes from the viewport; intentional scroll in the main content area
-- No custom global focus manager — browser directional navigation
+- Root sized with `html, body, #root { height: 100% }` and `var(--uit-color-background-window)`
+- Toolkit `App` loads styles — do not import the package `styles.css` manually
+- Directional focus via toolkit / browser — no custom global focus manager
 
 ## Wearables MCP
 
