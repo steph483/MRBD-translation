@@ -1,10 +1,10 @@
 import { App } from "@wearables-ui-toolkit/mrbd";
-import { TranslatePage } from "./pages/TranslatePage";
+import { TranslationApp } from "./pages/TranslationApp";
 
 export function RootApp() {
   return (
     <App>
-      <TranslatePage />
+      <TranslationApp />
     </App>
   );
 }

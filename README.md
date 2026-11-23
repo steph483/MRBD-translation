@@ -4,13 +4,15 @@ English → German helper for **Meta Ray-Ban Display**, built with Vite + React 
 
 ## Features
 
-- Toolkit `InputTextView` for type / dictate / handwriting via the system composer
+- Two horizontal pages via toolkit `SubNavigationPager`: **Saved** (left) ↔ **Translate** (right)
+- **Saved:** vertical list; empty state “No saved phrases”; select to load on Translate; swipe left → Delete (`SwipeToReveal`)
+- **Translate:** EN→DE + `InputTextView` Search on top; Hear / Sounds like / Save docked at bottom (never covers the top strip)
 - Free MyMemory translate API (no paid keys)
 - English phonetic “sounds like” respelling of the German
 - **Hear:** German device voice (`de-*`) when available, else CORS-friendly Lingva network TTS (cached in memory). Never English phonetic on Hear.
 - **Sounds-like:** English `speechSynthesis` reading the phonetic respelling
-- Live translate + hear without saving
-- Saved phrase list in `localStorage`
+- Saved phrases in `localStorage`
+- Status uses smaller toolkit typography (`META2`)
 
 ## Develop
 

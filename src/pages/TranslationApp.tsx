@@ -5,12 +5,19 @@ import {
   ButtonGroupAlignment,
   InputTextView,
   ListItem,
-  Page,
+  SubNavigationPager,
+  SwipeToReveal,
   TextColor,
   TextStyle,
   TextView,
   VerticalList,
 } from "@wearables-ui-toolkit/mrbd";
+import {
+  deleteIcon,
+  hearIcon,
+  savedTabIcon,
+  translateTabIcon,
+} from "../icons";
 import { loadSavedPhrases, persistSavedPhrases } from "../lib/storage";
 import { translateEnglish } from "../lib/translate";
 import {
@@ -20,12 +27,21 @@ import {
 } from "../lib/tts";
 import type { Phrase, SavedPhrase } from "../lib/types";
 
-export function TranslatePage() {
+const PAGE_SAVED = 0;
+const PAGE_TRANSLATE = 1;
+
+const NAV_ITEMS = [
+  { label: "Saved", icon: savedTabIcon },
+  { label: "Translate", icon: translateTabIcon },
+] as const;
+
+export function TranslationApp() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [pageIndex, setPageIndex] = useState(PAGE_TRANSLATE);
   const [english, setEnglish] = useState("");
   const [current, setCurrent] = useState<Phrase | null>(null);
   const [saved, setSaved] = useState<SavedPhrase[]>(() => loadSavedPhrases());
-  const [status, setStatus] = useState("Enter English, then Translate.");
+  const [status, setStatus] = useState("Enter English, then Search.");
   const [statusError, setStatusError] = useState(false);
   const [translating, setTranslating] = useState(false);
 
@@ -103,7 +119,6 @@ export function TranslatePage() {
         audioRef.current,
         phrase,
       );
-      // Ignore superseded plays so a newer Hear owns the status line
       if (nextStatus === "Superseded by a newer Hear.") return;
       updateStatus(nextStatus, isError);
     } catch (err) {
@@ -169,104 +184,131 @@ export function TranslatePage() {
         german: phrase.german,
         phonetic: phrase.phonetic,
       });
-      updateStatus("Loaded saved phrase.");
+      updateStatus("Loaded saved phrase — ready to Hear.");
+      setPageIndex(PAGE_TRANSLATE);
     },
     [updateStatus],
   );
 
   return (
-    <Page headerText="EN → DE" headerMetadata="Translate">
-      <div className="page-shell">
-        <VerticalList insetForHeader ariaLabel="Translation">
-          <div className="content-stack">
-            <div className="composer">
-              <InputTextView
-                text={english}
-                onTextChange={setEnglish}
-                hint="English phrase"
-                actionLabel="Translate"
-                showLoader={translating}
-                loadingLabel="Translating"
-                onSend={onTranslate}
-                inputProps={{ maxLength: 280, autoComplete: "off" }}
-              />
-            </div>
-
+    <SubNavigationPager
+      items={[...NAV_ITEMS]}
+      currentPageIndex={pageIndex}
+      onPageChange={(next) => setPageIndex(next)}
+      defaultPageIndex={PAGE_TRANSLATE}
+      homeIndex={PAGE_TRANSLATE}
+      ariaLabel="Translation pages"
+    >
+      {/* Left: Saved */}
+      <VerticalList insetForHeader ariaLabel="Saved phrases">
+        {saved.length === 0 ? (
+          <div className="empty-saved">
             <TextView
               as="p"
-              textStyle={TextStyle.META1}
-              textColor={statusError ? TextColor.ACCENT : TextColor.SECONDARY}
-              role="status"
-              style={{ overflowWrap: "anywhere" }}
+              textStyle={TextStyle.BODY2}
+              textColor={TextColor.SECONDARY}
             >
-              {status}
+              No saved phrases
             </TextView>
-
-            {current ? (
-              <div className="result-block">
-                <TextView
-                  as="p"
-                  textStyle={TextStyle.META2}
-                  textColor={TextColor.SECONDARY}
-                >
-                  German
-                </TextView>
-                <TextView as="p" textStyle={TextStyle.BODY1_EMPHASIZED}>
-                  {current.german}
-                </TextView>
-                <TextView
-                  as="p"
-                  textStyle={TextStyle.META2}
-                  textColor={TextColor.SECONDARY}
-                >
-                  Sounds like
-                </TextView>
-                <TextView
-                  as="p"
-                  textStyle={TextStyle.BODY2_EMPHASIZED}
-                  textColor={TextColor.ACCENT}
-                >
-                  {current.phonetic}
-                </TextView>
-              </div>
-            ) : null}
-
-            <TextView
-              as="h2"
-              className="section-label"
-              textStyle={TextStyle.LABEL_EMPHASIZED}
-            >
-              Saved phrases
-            </TextView>
+            <Button
+              title="Go to Translate"
+              icon={translateTabIcon}
+              alwaysShowText
+              onClick={() => setPageIndex(PAGE_TRANSLATE)}
+            />
           </div>
-
-          {saved.length === 0 ? (
-            <div className="content-stack">
-              <TextView
-                as="p"
-                textStyle={TextStyle.META1}
-                textColor={TextColor.SECONDARY}
-              >
-                No saved phrases yet.
-              </TextView>
-            </div>
-          ) : (
-            saved.map((phrase) => (
+        ) : (
+          saved.map((phrase) => (
+            <SwipeToReveal
+              key={phrase.id}
+              actions={[
+                {
+                  icon: deleteIcon,
+                  contentDescription: "Delete",
+                  onClick: () => onDeleteSaved(phrase.id),
+                },
+              ]}
+              actionsShownAnnouncement="Delete available"
+              actionsHiddenAnnouncement="Delete hidden"
+            >
               <ListItem
-                key={phrase.id}
                 title={phrase.english}
                 subtitle={`${phrase.german} · ${phrase.phonetic}`}
                 subtitleMaxLines={2}
                 onClick={() => onUseSaved(phrase)}
               />
-            ))
-          )}
-        </VerticalList>
+            </SwipeToReveal>
+          ))
+        )}
+      </VerticalList>
 
-        <div className="action-dock">
+      {/* Right: Translate */}
+      <div className="translate-shell">
+        <div className="translate-top">
+          <div className="translate-header">
+            <TextView as="h1" textStyle={TextStyle.HEADING2}>
+              EN → DE
+            </TextView>
+          </div>
+
+          <div className="composer">
+            <InputTextView
+              text={english}
+              onTextChange={setEnglish}
+              hint="English phrase"
+              actionLabel="Search"
+              showLoader={translating}
+              loadingLabel="Translating"
+              onSend={onTranslate}
+              inputProps={{ maxLength: 280, autoComplete: "off" }}
+            />
+          </div>
+
+          <TextView
+            as="p"
+            className="status-line"
+            textStyle={TextStyle.META2}
+            textColor={statusError ? TextColor.ACCENT : TextColor.SECONDARY}
+            role="status"
+          >
+            {status}
+          </TextView>
+
+          {current ? (
+            <div className="result-block">
+              <TextView
+                as="p"
+                textStyle={TextStyle.META3}
+                textColor={TextColor.SECONDARY}
+              >
+                German
+              </TextView>
+              <TextView as="p" textStyle={TextStyle.BODY1_EMPHASIZED}>
+                {current.german}
+              </TextView>
+              <TextView
+                as="p"
+                textStyle={TextStyle.META3}
+                textColor={TextColor.SECONDARY}
+              >
+                Sounds like
+              </TextView>
+              <TextView
+                as="p"
+                textStyle={TextStyle.BODY2_EMPHASIZED}
+                textColor={TextColor.ACCENT}
+              >
+                {current.phonetic}
+              </TextView>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="action-dock" aria-label="Translation actions">
           <ButtonGroup alignment={ButtonGroupAlignment.CENTER}>
             <Button
               title="Hear"
+              icon={hearIcon}
               alwaysShowText
               disabled={!current}
               onClick={() => {
@@ -274,7 +316,7 @@ export function TranslatePage() {
               }}
             />
             <Button
-              title="Sounds-like"
+              title="Sounds like"
               alwaysShowText
               disabled={!current}
               onClick={() => {
@@ -283,30 +325,14 @@ export function TranslatePage() {
             />
             <Button
               title={alreadySaved ? "Saved" : "Save"}
+              icon={savedTabIcon}
               alwaysShowText
               disabled={!current || alreadySaved}
               onClick={onSave}
             />
           </ButtonGroup>
-          {saved.length > 0 && current ? (
-            <ButtonGroup alignment={ButtonGroupAlignment.CENTER}>
-              <Button
-                title="Delete saved"
-                alwaysShowText
-                disabled={!alreadySaved}
-                onClick={() => {
-                  const match = saved.find(
-                    (p) =>
-                      p.english.toLowerCase() === current.english.toLowerCase() &&
-                      p.german.toLowerCase() === current.german.toLowerCase(),
-                  );
-                  if (match) onDeleteSaved(match.id);
-                }}
-              />
-            </ButtonGroup>
-          ) : null}
         </div>
       </div>
-    </Page>
+    </SubNavigationPager>
   );
 }

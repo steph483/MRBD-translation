@@ -18,7 +18,7 @@ body,
   box-sizing: border-box;
 }
 
-.page-shell {
+.translate-shell {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   block-size: 100%;
@@ -26,17 +26,29 @@ body,
   min-inline-size: 0;
 }
 
-.content-stack {
+.translate-top {
   display: flex;
   flex-direction: column;
   gap: var(--uit-spacing-small);
+  min-block-size: 0;
   min-inline-size: 0;
+  overflow: auto;
   padding-block: var(--uit-spacing-small);
   padding-inline: var(--uit-spacing-large);
+  /* Clear the overlaid SubNavigation strip */
+  padding-block-start: calc(var(--uit-spacing-xlarge) + var(--uit-spacing-xlarge));
+}
+
+.translate-header {
+  min-inline-size: 0;
 }
 
 .composer {
   min-inline-size: 0;
+}
+
+.status-line {
+  overflow-wrap: anywhere;
 }
 
 .result-block {
@@ -47,14 +59,19 @@ body,
 }
 
 .action-dock {
-  display: flex;
-  flex-direction: column;
-  gap: var(--uit-spacing-2xs);
   min-inline-size: 0;
+  padding-block-start: var(--uit-spacing-2xs);
   padding-block-end: var(--uit-spacing-xsmall);
   padding-inline: var(--uit-spacing-large);
+  /* Keep dock outside the scrolling top region so it never covers EN→DE / Search */
+  background-color: var(--uit-color-background-window);
 }
 
-.section-label {
-  padding-block-start: var(--uit-spacing-small);
+.empty-saved {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--uit-spacing-medium);
+  padding-block: var(--uit-spacing-large);
+  padding-inline: var(--uit-spacing-large);
 }
