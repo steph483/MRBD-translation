@@ -4,14 +4,14 @@ English → German helper for **Meta Ray-Ban Display**, built with Vite + React 
 
 ## Features
 
-- Two horizontal pages via toolkit `SubNavigationPager`: **Saved** (left) ↔ **Translate** (right)
-- **Saved:** vertical list; empty state “No saved phrases”; select to load on Translate; swipe left → Delete (`SwipeToReveal`)
-- **Translate:** EN→DE + `InputTextView` Search on top; Hear / Sounds like / Save docked at bottom (never covers the top strip)
+- Three pages via toolkit `SubNavigationPager`: **Saved** (left) | **Translate** (center/home) | **Settings** (right)
+- **Saved:** rows show `Translation: {german}`; empty “No saved phrases”; select loads Translate; swipe **left** reveals Delete (swipe right returns to Translate)
+- **Translate:** pair label + `InputTextView` Search; Hear / Sounds like / Save docked at bottom
+- **Settings:** source/target language pickers + reading-speed slider (Hear + Sounds like); persisted in `localStorage` (only EN→DE translates today)
 - Free MyMemory translate API (no paid keys)
 - English phonetic “sounds like” respelling of the German
 - **Hear:** German device voice (`de-*`) when available, else CORS-friendly Lingva network TTS (cached in memory). Never English phonetic on Hear.
 - **Sounds-like:** English `speechSynthesis` reading the phonetic respelling
-- Saved phrases in `localStorage`
 - Status uses smaller toolkit typography (`META2`)
 
 ## Develop

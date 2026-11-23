@@ -13,20 +13,28 @@ import {
   InputTextView,
   ListItem,
   SubNavigationPager,
-  SwipeToReveal,
   TextColor,
   TextStyle,
   TextView,
   VerticalList,
   type ButtonHandle,
 } from "@wearables-ui-toolkit/mrbd";
+import { SwipeToDelete } from "../components/SwipeToDelete";
 import {
   deleteIcon,
   hearIcon,
   savedFilledIcon,
   savedTabIcon,
+  settingsTabIcon,
   translateTabIcon,
 } from "../icons";
+import {
+  isSupportedPair,
+  langLabel,
+  loadSettings,
+  persistSettings,
+  type AppSettings,
+} from "../lib/settings";
 import { loadSavedPhrases, persistSavedPhrases } from "../lib/storage";
 import { translateEnglish } from "../lib/translate";
 import {
@@ -35,13 +43,16 @@ import {
   stopSpeech,
 } from "../lib/tts";
 import type { Phrase, SavedPhrase } from "../lib/types";
+import { SettingsPage } from "./SettingsPage";
 
 const PAGE_SAVED = 0;
 const PAGE_TRANSLATE = 1;
+const PAGE_SETTINGS = 2;
 
 const NAV_ITEMS = [
   { label: "Saved", icon: savedTabIcon },
   { label: "Translate", icon: translateTabIcon },
+  { label: "Settings", icon: settingsTabIcon },
 ] as const;
 
 export function TranslationApp() {
@@ -52,6 +63,7 @@ export function TranslationApp() {
   const [english, setEnglish] = useState("");
   const [current, setCurrent] = useState<Phrase | null>(null);
   const [saved, setSaved] = useState<SavedPhrase[]>(() => loadSavedPhrases());
+  const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [status, setStatus] = useState("Enter English, then Search.");
   const [statusError, setStatusError] = useState(false);
   const [translating, setTranslating] = useState(false);
@@ -69,6 +81,14 @@ export function TranslationApp() {
       audioRef.current = null;
     };
   }, []);
+
+  const pairSupported = isSupportedPair(
+    settings.sourceLang,
+    settings.targetLang,
+  );
+
+  const pairLabel = `${langLabel(settings.sourceLang)} → ${langLabel(settings.targetLang)}`;
+  const pairShort = `${settings.sourceLang.toUpperCase()} → ${settings.targetLang.toUpperCase()}`;
 
   const alreadySaved = useMemo(() => {
     if (!current) return false;
@@ -94,11 +114,28 @@ export function TranslationApp() {
     [updateStatus],
   );
 
+  const onSettingsChange = useCallback(
+    (next: AppSettings) => {
+      setSettings(next);
+      if (!persistSettings(next)) {
+        updateStatus("Could not save settings.", true);
+      }
+    },
+    [updateStatus],
+  );
+
   const onTranslate = useCallback(
     async (text: string) => {
       const value = text.trim();
       if (!value) {
         updateStatus("Enter an English phrase first.", true);
+        return;
+      }
+      if (!pairSupported) {
+        updateStatus(
+          `Coming soon — only English → German translates today (you chose ${pairLabel}).`,
+          true,
+        );
         return;
       }
       setEnglish(value);
@@ -118,7 +155,7 @@ export function TranslationApp() {
         setTranslating(false);
       }
     },
-    [updateStatus],
+    [pairLabel, pairSupported, updateStatus],
   );
 
   const onHearGerman = useCallback(async () => {
@@ -129,6 +166,7 @@ export function TranslationApp() {
       const { status: nextStatus, isError } = await playGermanNetworkTts(
         audioRef.current,
         phrase,
+        settings.readingSpeed,
       );
       if (nextStatus === "Superseded by a newer Hear.") return;
       updateStatus(nextStatus, isError);
@@ -140,7 +178,7 @@ export function TranslationApp() {
         true,
       );
     }
-  }, [current, updateStatus]);
+  }, [current, settings.readingSpeed, updateStatus]);
 
   const onHearPhonetic = useCallback(async () => {
     if (!current) return;
@@ -149,6 +187,7 @@ export function TranslationApp() {
       const { status: nextStatus, isError } = await playPhoneticSpeech(
         audioRef.current,
         current.phonetic,
+        settings.readingSpeed,
       );
       if (nextStatus === "Superseded by a newer play.") return;
       updateStatus(nextStatus, isError);
@@ -160,7 +199,7 @@ export function TranslationApp() {
         true,
       );
     }
-  }, [current, updateStatus]);
+  }, [current, settings.readingSpeed, updateStatus]);
 
   const onSave = useCallback(() => {
     if (!current) return;
@@ -240,8 +279,9 @@ export function TranslationApp() {
           </div>
         ) : (
           saved.map((phrase) => (
-            <SwipeToReveal
+            <SwipeToDelete
               key={phrase.id}
+              onNavigateRight={() => setPageIndex(PAGE_TRANSLATE)}
               actions={[
                 {
                   icon: deleteIcon,
@@ -249,27 +289,32 @@ export function TranslationApp() {
                   onClick: () => onDeleteSaved(phrase.id),
                 },
               ]}
-              actionsShownAnnouncement="Delete available"
-              actionsHiddenAnnouncement="Delete hidden"
             >
               <ListItem
-                title={phrase.english}
-                subtitle={`${phrase.german} · ${phrase.phonetic}`}
-                subtitleMaxLines={2}
+                title={`Translation: ${phrase.german}`}
                 onClick={() => onUseSaved(phrase)}
               />
-            </SwipeToReveal>
+            </SwipeToDelete>
           ))
         )}
       </VerticalList>
 
-      {/* Right: Translate */}
+      {/* Center / home: Translate */}
       <div className="translate-shell">
         <div className="translate-top">
           <div className="translate-header">
             <TextView as="h1" textStyle={TextStyle.HEADING2}>
-              EN → DE
+              {pairShort}
             </TextView>
+            {!pairSupported ? (
+              <TextView
+                as="p"
+                textStyle={TextStyle.META2}
+                textColor={TextColor.SECONDARY}
+              >
+                Translate works for EN → DE only
+              </TextView>
+            ) : null}
           </div>
 
           <div className="composer">
@@ -360,6 +405,9 @@ export function TranslationApp() {
           </ButtonGroup>
         </div>
       </div>
+
+      {/* Right: Settings */}
+      <SettingsPage settings={settings} onChange={onSettingsChange} />
     </SubNavigationPager>
   );
 }

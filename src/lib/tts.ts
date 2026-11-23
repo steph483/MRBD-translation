@@ -87,9 +87,15 @@ export async function findGermanVoice(): Promise<SpeechSynthesisVoice | null> {
   return voices.find((v) => /german|deutsch/i.test(v.name)) ?? null;
 }
 
+function clampRate(rate: number | undefined): number {
+  if (rate == null || !Number.isFinite(rate)) return 1;
+  return Math.min(1.5, Math.max(0.5, rate));
+}
+
 function speakGermanText(
   text: string,
   voice: SpeechSynthesisVoice | null,
+  rate = 1,
 ): Promise<"voice-de"> {
   return new Promise((resolve, reject) => {
     if (
@@ -105,7 +111,7 @@ function speakGermanText(
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = voice?.lang || "de-DE";
     if (voice) utterance.voice = voice;
-    utterance.rate = 0.95;
+    utterance.rate = clampRate(rate) * 0.95;
 
     let settled = false;
     const settle = (fn: () => void) => {
@@ -136,7 +142,10 @@ function speakGermanText(
   });
 }
 
-function speakEnglishPhonetic(text: string): Promise<"speechSynthesis"> {
+function speakEnglishPhonetic(
+  text: string,
+  rate = 1,
+): Promise<"speechSynthesis"> {
   return new Promise((resolve, reject) => {
     if (
       !("speechSynthesis" in window) ||
@@ -148,7 +157,7 @@ function speakEnglishPhonetic(text: string): Promise<"speechSynthesis"> {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-US";
-    utterance.rate = 0.92;
+    utterance.rate = clampRate(rate) * 0.92;
     utterance.onend = () => resolve("speechSynthesis");
     utterance.onerror = (event) =>
       reject(new Error(`speechSynthesis ${event.error || "error"}`));
@@ -163,6 +172,7 @@ function speakEnglishPhonetic(text: string): Promise<"speechSynthesis"> {
 function playBlob(
   audio: HTMLAudioElement,
   blob: Blob,
+  rate = 1,
 ): Promise<"audio"> {
   const objectUrl = URL.createObjectURL(blob);
 
@@ -175,6 +185,11 @@ function playBlob(
       window.clearTimeout(watchdog);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
+      try {
+        audio.playbackRate = 1;
+      } catch {
+        /* ignore */
+      }
       // Revoke after this play finishes; next Hear creates a new URL from Blob cache.
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
       fn();
@@ -199,6 +214,7 @@ function playBlob(
       audio.currentTime = 0;
       audio.src = objectUrl;
       audio.load();
+      audio.playbackRate = clampRate(rate);
       const playPromise = audio.play();
       if (playPromise && typeof playPromise.then === "function") {
         playPromise.catch((err: unknown) => {
@@ -259,10 +275,11 @@ async function playNetworkGermanWithCache(
   audio: HTMLAudioElement,
   german: string,
   errors: StepError[],
+  rate = 1,
 ): Promise<"network-de"> {
   const cached = getCachedBlob(german);
   if (cached) {
-    await playBlob(audio, cached);
+    await playBlob(audio, cached, rate);
     return "network-de";
   }
 
@@ -272,7 +289,7 @@ async function playNetworkGermanWithCache(
     try {
       const blob = await fetchLingvaMp3(host, german);
       putCachedBlob(german, blob);
-      await playBlob(audio, blob);
+      await playBlob(audio, blob, rate);
       return "network-de";
     } catch (err) {
       lastError = err;
@@ -297,9 +314,11 @@ export type PlayResult =
 export async function playGermanNetworkTts(
   audio: HTMLAudioElement | null,
   german: string,
+  rate = 1,
 ): Promise<{ result: PlayResult; status: string; isError: boolean }> {
   const generation = ++playbackGeneration;
   const stillCurrent = () => generation === playbackGeneration;
+  const playRate = clampRate(rate);
 
   const text = german.trim();
   if (!text) {
@@ -330,7 +349,7 @@ export async function playGermanNetworkTts(
       const cached = getCachedBlob(text);
       if (cached) {
         try {
-          await playBlob(audio, cached);
+          await playBlob(audio, cached, playRate);
           return done("network-de", "Played German audio (cached).", false);
         } catch (err) {
           // Drop bad cache entry and continue
@@ -352,7 +371,7 @@ export async function playGermanNetworkTts(
     // 1) Named German voice when listed
     if (deVoice) {
       try {
-        await speakGermanText(text, deVoice);
+        await speakGermanText(text, deVoice, playRate);
         return done(
           "voice-de",
           `Played German (device: ${deVoice.lang}/${deVoice.name}).`,
@@ -375,7 +394,7 @@ export async function playGermanNetworkTts(
     // 2) Network Lingva
     const tryNetwork = async (): Promise<"network-de"> => {
       if (!audio) throw new Error("audio element missing");
-      return playNetworkGermanWithCache(audio, text, errors);
+      return playNetworkGermanWithCache(audio, text, errors, playRate);
     };
 
     try {
@@ -411,7 +430,7 @@ export async function playGermanNetworkTts(
     // 4) lang=de-DE speechSynthesis on German text
     try {
       stopSpeech(audio);
-      await speakGermanText(text, null);
+      await speakGermanText(text, null, playRate);
       return done(
         "voice-de",
         "Played German (speechSynthesis lang=de-DE fallback).",
@@ -442,6 +461,7 @@ export async function playGermanNetworkTts(
 export async function playPhoneticSpeech(
   audio: HTMLAudioElement | null,
   phonetic: string,
+  rate = 1,
 ): Promise<{ result: PlayResult; status: string; isError: boolean }> {
   const generation = ++playbackGeneration;
   stopSpeech(audio);
@@ -455,7 +475,7 @@ export async function playPhoneticSpeech(
   }
 
   try {
-    await speakEnglishPhonetic(text);
+    await speakEnglishPhonetic(text, rate);
     if (generation !== playbackGeneration) {
       return {
         result: "unavailable",
