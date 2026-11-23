@@ -175,6 +175,7 @@ export function TranslatePage() {
               textStyle={TextStyle.META1}
               textColor={statusError ? TextColor.ACCENT : TextColor.SECONDARY}
               role="status"
+              style={{ overflowWrap: "anywhere" }}
             >
               {status}
             </TextView>

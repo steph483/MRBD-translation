@@ -5,23 +5,19 @@ const LINGVA_HOSTS = [
   "https://lingva.ml",
   "https://lingva.garudalinux.org",
   "https://translate.plausibility.cloud",
+  "https://lingva.lunar.icu",
 ] as const;
 
-function chunkText(text: string, maxLen: number): string[] {
-  const words = text.trim().split(/\s+/);
-  const chunks: string[] = [];
-  let currentChunk = "";
-  for (const word of words) {
-    const next = currentChunk ? `${currentChunk} ${word}` : word;
-    if (next.length > maxLen && currentChunk) {
-      chunks.push(currentChunk);
-      currentChunk = word;
-    } else {
-      currentChunk = next;
-    }
-  }
-  if (currentChunk) chunks.push(currentChunk);
-  return chunks.length ? chunks : [text];
+type StepError = { step: string; detail: string };
+
+function formatErrors(errors: StepError[]): string {
+  if (!errors.length) return "unknown";
+  return errors.map((e) => `${e.step}: ${e.detail}`).join(" | ");
+}
+
+function errDetail(err: unknown): string {
+  if (err instanceof Error) return err.message || err.name;
+  return String(err);
 }
 
 export function stopSpeech(audio: HTMLAudioElement | null): void {
@@ -39,51 +35,126 @@ export function stopSpeech(audio: HTMLAudioElement | null): void {
   }
 }
 
-function waitForVoices(timeoutMs = 800): Promise<SpeechSynthesisVoice[]> {
+/**
+ * Wait for voices — Chrome often returns [] until voiceschanged.
+ * Also poke getVoices() which triggers loading on some engines.
+ */
+function waitForVoices(timeoutMs = 1500): Promise<SpeechSynthesisVoice[]> {
   if (!("speechSynthesis" in window)) return Promise.resolve([]);
-  const existing = window.speechSynthesis.getVoices();
-  if (existing.length > 0) return Promise.resolve(existing);
 
   return new Promise((resolve) => {
-    const done = () => {
-      window.speechSynthesis.removeEventListener("voiceschanged", done);
-      resolve(window.speechSynthesis.getVoices());
+    const finish = (voices: SpeechSynthesisVoice[]) => {
+      window.clearTimeout(timer);
+      window.speechSynthesis.removeEventListener("voiceschanged", onChange);
+      resolve(voices);
     };
-    window.speechSynthesis.addEventListener("voiceschanged", done);
-    window.setTimeout(() => {
-      window.speechSynthesis.removeEventListener("voiceschanged", done);
-      resolve(window.speechSynthesis.getVoices());
+
+    const onChange = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) finish(voices);
+    };
+
+    // Trigger load
+    const immediate = window.speechSynthesis.getVoices();
+    if (immediate.length > 0) {
+      finish(immediate);
+      return;
+    }
+
+    window.speechSynthesis.addEventListener("voiceschanged", onChange);
+    const timer = window.setTimeout(() => {
+      finish(window.speechSynthesis.getVoices());
     }, timeoutMs);
+
+    // Second poke after a tick (helps some Chromium builds)
+    window.setTimeout(() => {
+      const again = window.speechSynthesis.getVoices();
+      if (again.length > 0) finish(again);
+    }, 50);
   });
 }
 
-/** True German voice only — never an English voice reading phonetic text. */
 export async function findGermanVoice(): Promise<SpeechSynthesisVoice | null> {
   const voices = await waitForVoices();
-  const deExact = voices.find((v) => /^de(-|$)/i.test(v.lang));
-  if (deExact) return deExact;
+  const byLang = voices.find((v) => /^de([_-]|$)/i.test(v.lang));
+  if (byLang) return byLang;
   return voices.find((v) => /german|deutsch/i.test(v.name)) ?? null;
 }
 
-function speakWithSynthesis(
+/**
+ * Speak German text (never English phonetic).
+ * Uses an explicit de voice when present; otherwise lang=de-DE so the
+ * engine can still synthesize German (important on MRBD / limited voice lists).
+ */
+function speakGermanText(
   text: string,
-  options: { lang?: string; voice?: SpeechSynthesisVoice | null } = {},
-): Promise<"speechSynthesis"> {
+  voice: SpeechSynthesisVoice | null,
+): Promise<"voice-de"> {
   return new Promise((resolve, reject) => {
     if (
       !("speechSynthesis" in window) ||
       !("SpeechSynthesisUtterance" in window)
     ) {
-      reject(new Error("Speech synthesis unavailable."));
+      reject(new Error("speechSynthesis missing"));
       return;
     }
 
+    // Cancel any prior utterance without tearing down mid-flight races
+    window.speechSynthesis.cancel();
+
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = options.lang ?? options.voice?.lang ?? "en-US";
-    if (options.voice) utterance.voice = options.voice;
+    utterance.lang = voice?.lang || "de-DE";
+    if (voice) utterance.voice = voice;
+    utterance.rate = 0.95;
+
+    let settled = false;
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(watchdog);
+      fn();
+    };
+
+    // Some engines fire neither end nor error; don't hang Hear forever
+    const watchdog = window.setTimeout(() => {
+      settle(() => reject(new Error("speechSynthesis timeout")));
+    }, 12000);
+
+    utterance.onstart = () => {
+      // started — keep waiting for end
+    };
+    utterance.onend = () => settle(() => resolve("voice-de"));
+    utterance.onerror = (event) =>
+      settle(() => reject(new Error(`speechSynthesis ${event.error || "error"}`)));
+
+    try {
+      window.speechSynthesis.speak(utterance);
+      // Chrome quirk: paused synth needs resume
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+    } catch (err) {
+      settle(() => reject(err instanceof Error ? err : new Error(String(err))));
+    }
+  });
+}
+
+function speakEnglishPhonetic(text: string): Promise<"speechSynthesis"> {
+  return new Promise((resolve, reject) => {
+    if (
+      !("speechSynthesis" in window) ||
+      !("SpeechSynthesisUtterance" in window)
+    ) {
+      reject(new Error("speechSynthesis missing"));
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
     utterance.rate = 0.92;
     utterance.onend = () => resolve("speechSynthesis");
-    utterance.onerror = () => reject(new Error("Speech synthesis failed."));
+    utterance.onerror = (event) =>
+      reject(new Error(`speechSynthesis ${event.error || "error"}`));
     window.speechSynthesis.speak(utterance);
   });
 }
@@ -98,8 +169,9 @@ function playObjectUrl(
       resolve("audio");
     };
     const onError = () => {
+      const code = audio.error?.code;
       cleanup();
-      reject(new Error("Audio playback failed."));
+      reject(new Error(`audio element error code=${code ?? "?"}`));
     };
     const cleanup = () => {
       audio.removeEventListener("ended", onEnded);
@@ -111,40 +183,37 @@ function playObjectUrl(
     audio.src = objectUrl;
     const playPromise = audio.play();
     if (playPromise && typeof playPromise.then === "function") {
-      playPromise.catch(onError);
+      playPromise.catch((err: unknown) => {
+        cleanup();
+        reject(err instanceof Error ? err : new Error(String(err)));
+      });
     }
   });
 }
 
 async function fetchLingvaMp3(host: string, text: string): Promise<Blob> {
   const url = `${host}/api/v1/audio/de/${encodeURIComponent(text)}`;
-  const res = await fetch(url, {
-    mode: "cors",
-    credentials: "omit",
-    referrerPolicy: "no-referrer",
-  });
-  if (!res.ok) {
-    throw new Error(`Lingva TTS HTTP ${res.status}`);
-  }
-  const data = (await res.json()) as { audio?: number[] };
-  if (!data.audio || !Array.isArray(data.audio) || data.audio.length < 100) {
-    throw new Error("Lingva TTS returned empty audio.");
-  }
-  return new Blob([new Uint8Array(data.audio)], { type: "audio/mpeg" });
-}
-
-async function fetchGermanMp3Blob(text: string): Promise<Blob> {
-  let lastError: unknown = null;
-  for (const host of LINGVA_HOSTS) {
-    try {
-      return await fetchLingvaMp3(host, text);
-    } catch (err) {
-      lastError = err;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(url, {
+      mode: "cors",
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
     }
+    const data = (await res.json()) as { audio?: number[] };
+    if (!data.audio || !Array.isArray(data.audio) || data.audio.length < 100) {
+      throw new Error("empty audio array");
+    }
+    const bytes = Uint8Array.from(data.audio);
+    return new Blob([bytes], { type: "audio/mpeg" });
+  } finally {
+    window.clearTimeout(timer);
   }
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("All German TTS hosts failed.");
 }
 
 function cacheKey(german: string): string {
@@ -162,8 +231,6 @@ function putCachedObjectUrl(german: string, objectUrl: string): void {
     URL.revokeObjectURL(previous);
   }
   germanAudioCache.set(key, objectUrl);
-
-  // Soft cap: keep last ~40 phrases
   if (germanAudioCache.size > 40) {
     const oldest = germanAudioCache.keys().next().value;
     if (oldest) {
@@ -177,6 +244,7 @@ function putCachedObjectUrl(german: string, objectUrl: string): void {
 async function playNetworkGermanWithCache(
   audio: HTMLAudioElement,
   german: string,
+  errors: StepError[],
 ): Promise<"network-de"> {
   const cached = getCachedObjectUrl(german);
   if (cached) {
@@ -184,29 +252,23 @@ async function playNetworkGermanWithCache(
     return "network-de";
   }
 
-  // Lingva handles full phrases; chunk only very long text.
-  const parts = chunkText(german, 200);
-  if (parts.length === 1) {
-    const blob = await fetchGermanMp3Blob(parts[0]);
-    const objectUrl = URL.createObjectURL(blob);
-    putCachedObjectUrl(german, objectUrl);
-    await playObjectUrl(audio, objectUrl);
-    return "network-de";
-  }
-
-  // Multi-chunk: play sequentially without caching the join
-  for (const part of parts) {
-    const partCached = getCachedObjectUrl(part);
-    if (partCached) {
-      await playObjectUrl(audio, partCached);
-      continue;
+  let lastError: unknown = null;
+  for (const host of LINGVA_HOSTS) {
+    const hostLabel = host.replace(/^https:\/\//, "");
+    try {
+      const blob = await fetchLingvaMp3(host, german);
+      const objectUrl = URL.createObjectURL(blob);
+      putCachedObjectUrl(german, objectUrl);
+      await playObjectUrl(audio, objectUrl);
+      return "network-de";
+    } catch (err) {
+      lastError = err;
+      errors.push({ step: hostLabel, detail: errDetail(err) });
     }
-    const blob = await fetchGermanMp3Blob(part);
-    const objectUrl = URL.createObjectURL(blob);
-    putCachedObjectUrl(part, objectUrl);
-    await playObjectUrl(audio, objectUrl);
   }
-  return "network-de";
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("All German TTS hosts failed.");
 }
 
 export type PlayResult =
@@ -215,75 +277,115 @@ export type PlayResult =
   | "speechSynthesis"
   | "unavailable";
 
-async function attemptGermanPlayback(
-  audio: HTMLAudioElement | null,
-  text: string,
-): Promise<{ result: Exclude<PlayResult, "unavailable" | "speechSynthesis"> }> {
-  // 1) Desktop / browser German voice when available
-  const deVoice = await findGermanVoice();
-  if (deVoice) {
-    await speakWithSynthesis(text, { lang: deVoice.lang, voice: deVoice });
-    return { result: "voice-de" };
-  }
-
-  // 2) CORS-friendly Lingva network TTS → blob URL
-  if (!audio) {
-    throw new Error("Audio element missing for network TTS.");
-  }
-  await playNetworkGermanWithCache(audio, text);
-  return { result: "network-de" };
-}
-
 /**
- * Hear: German only (de voice or German network TTS). Never English phonetic TTS.
+ * Hear: German only — never English phonetic TTS.
+ * Order: cached network → de voice / lang=de-DE synth → Lingva network (retry).
  */
 export async function playGermanNetworkTts(
   audio: HTMLAudioElement | null,
   german: string,
 ): Promise<{ result: PlayResult; status: string; isError: boolean }> {
-  stopSpeech(audio);
   const text = german.trim();
   if (!text) {
-    return {
-      result: "unavailable",
-      status: "Nothing to play.",
-      isError: true,
-    };
+    return { result: "unavailable", status: "Nothing to play.", isError: true };
   }
 
-  try {
-    const first = await attemptGermanPlayback(audio, text);
-    return {
-      result: first.result,
-      status:
-        first.result === "voice-de"
-          ? "Played German (device voice)."
-          : "Played German audio.",
-      isError: false,
-    };
-  } catch {
-    // One retry after a short pause
-    await new Promise((r) => window.setTimeout(r, 350));
-    try {
+  const errors: StepError[] = [];
+
+  // Fast path: memory cache (skip stopSpeech teardown of a playing blob if same)
+  if (audio) {
+    const cached = getCachedObjectUrl(text);
+    if (cached) {
       stopSpeech(audio);
-      const second = await attemptGermanPlayback(audio, text);
-      return {
-        result: second.result,
-        status:
-          second.result === "voice-de"
-            ? "Played German (device voice)."
-            : "Played German audio.",
-        isError: false,
-      };
-    } catch {
-      return {
-        result: "unavailable",
-        status:
-          "Couldn’t play German right now. Check the network, then try Hear again.",
-        isError: true,
-      };
+      try {
+        await playObjectUrl(audio, cached);
+        return {
+          result: "network-de",
+          status: "Played German audio (cached).",
+          isError: false,
+        };
+      } catch (err) {
+        errors.push({ step: "cache", detail: errDetail(err) });
+      }
     }
   }
+
+  stopSpeech(audio);
+
+  const deVoice = await findGermanVoice();
+
+  // 1) Named German voice when the browser actually lists one
+  if (deVoice) {
+    try {
+      await speakGermanText(text, deVoice);
+      return {
+        result: "voice-de",
+        status: `Played German (device: ${deVoice.lang}/${deVoice.name}).`,
+        isError: false,
+      };
+    } catch (err) {
+      errors.push({
+        step: `voice:${deVoice.lang}`,
+        detail: errDetail(err),
+      });
+    }
+  } else {
+    errors.push({ step: "voices", detail: "no de-* voice listed yet" });
+  }
+
+  // 2) Network Lingva → blob (real German audio; CORS-friendly)
+  const tryNetwork = async (): Promise<"network-de"> => {
+    if (!audio) {
+      throw new Error("audio element missing");
+    }
+    return playNetworkGermanWithCache(audio, text, errors);
+  };
+
+  try {
+    stopSpeech(audio);
+    await tryNetwork();
+    return {
+      result: "network-de",
+      status: "Played German audio (Lingva).",
+      isError: false,
+    };
+  } catch (err) {
+    errors.push({ step: "network-1", detail: errDetail(err) });
+  }
+
+  // 3) Retry network once
+  await new Promise((r) => window.setTimeout(r, 400));
+  try {
+    stopSpeech(audio);
+    await tryNetwork();
+    return {
+      result: "network-de",
+      status: "Played German audio (Lingva retry).",
+      isError: false,
+    };
+  } catch (err) {
+    errors.push({ step: "network-2", detail: errDetail(err) });
+  }
+
+  // 4) Last resort: speechSynthesis with lang=de-DE on German text
+  //    (helps MRBD / locked-down networks when Lingva is blocked)
+  try {
+    stopSpeech(audio);
+    await speakGermanText(text, null);
+    return {
+      result: "voice-de",
+      status: "Played German (speechSynthesis lang=de-DE fallback).",
+      isError: false,
+    };
+  } catch (err) {
+    errors.push({ step: "synth-de-DE", detail: errDetail(err) });
+  }
+
+  return {
+    result: "unavailable",
+    status: `German Hear failed — ${formatErrors(errors)}`,
+    isError: true,
+  };
 }
 
 /**
@@ -304,16 +406,16 @@ export async function playPhoneticSpeech(
   }
 
   try {
-    await speakWithSynthesis(text, { lang: "en-US" });
+    await speakEnglishPhonetic(text);
     return {
       result: "speechSynthesis",
       status: "Played sounds-like (English voice).",
       isError: false,
     };
-  } catch {
+  } catch (err) {
     return {
       result: "unavailable",
-      status: "Sounds-like speech failed. Read the phonetic text on screen.",
+      status: `Sounds-like failed — ${errDetail(err)}`,
       isError: true,
     };
   }
