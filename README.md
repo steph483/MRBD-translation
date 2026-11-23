@@ -7,7 +7,8 @@ English → German helper for **Meta Ray-Ban Display**, built with Vite + React 
 - Toolkit `InputTextView` for type / dictate / handwriting via the system composer
 - Free MyMemory translate API (no paid keys)
 - English phonetic “sounds like” respelling of the German
-- Network German TTS when online; falls back to phonetic + English `speechSynthesis`
+- **Hear:** German device voice (`de-*`) when available, else CORS-friendly Lingva network TTS (cached in memory). Never English phonetic on Hear.
+- **Sounds-like:** English `speechSynthesis` reading the phonetic respelling
 - Live translate + hear without saving
 - Saved phrase list in `localStorage`
 
