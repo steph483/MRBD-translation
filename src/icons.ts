@@ -2,6 +2,7 @@ import bookmarkFilled from "@wearables-ui-toolkit/icons/svg/bookmark__filled.svg
 import bookmarkOutline from "@wearables-ui-toolkit/icons/svg/bookmark__outline.svg";
 import chevronLeftOutline from "@wearables-ui-toolkit/icons/svg/chevronleft__outline.svg";
 import chevronRightOutline from "@wearables-ui-toolkit/icons/svg/chevronright__outline.svg";
+import circleXOutline from "@wearables-ui-toolkit/icons/svg/circlex__outline.svg";
 import sliders2HorizontalOutline from "@wearables-ui-toolkit/icons/svg/sliders2horizontal__outline.svg";
 import speakerHiOutline from "@wearables-ui-toolkit/icons/svg/speakerhi__outline.svg";
 import speedometerOutline from "@wearables-ui-toolkit/icons/svg/speedometer__outline.svg";
@@ -17,3 +18,4 @@ export const hearIcon = speakerHiOutline;
 export const readingSpeedIcon = speedometerOutline;
 export const chevronRightIcon = chevronRightOutline;
 export const chevronLeftIcon = chevronLeftOutline;
+export const clearIcon = circleXOutline;

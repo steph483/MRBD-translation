@@ -25,8 +25,10 @@ function trayIsOpen(root: EventTarget | null): boolean {
 }
 
 /**
- * Toolkit SwipeToReveal opens on ArrowRight by default, which fights the pager.
- * Remap: ArrowLeft reveals Delete; ArrowRight navigates (does not reveal).
+ * Toolkit SwipeToReveal only opens when ArrowRight targets a node inside its
+ * slot (`slot.contains(event.target)`). Remap ArrowLeft → that reveal path by
+ * re-dispatching ArrowRight onto the focused row (not the shell root).
+ * ArrowRight is reserved for pager navigation back to Translate.
  */
 export function SwipeToDelete({
   actions,
@@ -36,24 +38,45 @@ export function SwipeToDelete({
   actionsHiddenAnnouncement = "Delete hidden",
 }: Props) {
   const allowToolkitReveal = useRef(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const dispatchArrowRight = useCallback((root: EventTarget, type: "keydown" | "keyup") => {
-    if (!(root instanceof HTMLElement)) return;
-    root.dispatchEvent(
-      new KeyboardEvent(type, {
-        key: "ArrowRight",
-        code: "ArrowRight",
-        bubbles: true,
-        cancelable: true,
-        view: window,
-      }),
+  const focusTargetInSlot = useCallback((): HTMLElement | null => {
+    const root = rootRef.current;
+    if (!root) return null;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && root.contains(active)) {
+      return active;
+    }
+    // Slot is the focusable child's wrapper; prefer a tabindex/role=button inside.
+    return (
+      root.querySelector<HTMLElement>(
+        '[role="button"], [tabindex]:not([tabindex="-1"])',
+      ) ?? null
     );
   }, []);
+
+  const dispatchArrowRightOnFocus = useCallback(
+    (type: "keydown" | "keyup") => {
+      const target = focusTargetInSlot();
+      if (!target) return;
+      target.dispatchEvent(
+        new KeyboardEvent(type, {
+          key: "ArrowRight",
+          code: "ArrowRight",
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        }),
+      );
+    },
+    [focusTargetInSlot],
+  );
 
   const onKeyDownCapture = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
       const open = trayIsOpen(event.currentTarget);
 
+      // Right → Translate (do not open Delete)
       if (event.key === "ArrowRight" && !open && !allowToolkitReveal.current) {
         event.preventDefault();
         event.stopPropagation();
@@ -61,14 +84,15 @@ export function SwipeToDelete({
         return;
       }
 
+      // Left → reveal Delete (item-level wins over pager)
       if (event.key === "ArrowLeft" && !open) {
         event.preventDefault();
         event.stopPropagation();
         allowToolkitReveal.current = true;
-        dispatchArrowRight(event.currentTarget, "keydown");
+        dispatchArrowRightOnFocus("keydown");
       }
     },
-    [dispatchArrowRight, onNavigateRight],
+    [dispatchArrowRightOnFocus, onNavigateRight],
   );
 
   const onKeyUpCapture = useCallback(
@@ -81,10 +105,10 @@ export function SwipeToDelete({
         return;
       }
 
-      if (event.key === "ArrowLeft" && !open && allowToolkitReveal.current) {
+      if (event.key === "ArrowLeft" && allowToolkitReveal.current && !open) {
         event.preventDefault();
         event.stopPropagation();
-        dispatchArrowRight(event.currentTarget, "keyup");
+        dispatchArrowRightOnFocus("keyup");
         queueMicrotask(() => {
           allowToolkitReveal.current = false;
         });
@@ -97,11 +121,12 @@ export function SwipeToDelete({
         });
       }
     },
-    [dispatchArrowRight],
+    [dispatchArrowRightOnFocus],
   );
 
   return (
     <SwipeToReveal
+      ref={rootRef}
       actions={actions}
       actionsShownAnnouncement={actionsShownAnnouncement}
       actionsHiddenAnnouncement={actionsHiddenAnnouncement}

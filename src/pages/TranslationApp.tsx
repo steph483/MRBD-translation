@@ -22,6 +22,7 @@ import {
 } from "@wearables-ui-toolkit/mrbd";
 import { SwipeToDelete } from "../components/SwipeToDelete";
 import {
+  clearIcon,
   deleteIcon,
   hearIcon,
   savedFilledIcon,
@@ -125,6 +126,14 @@ export function TranslationApp() {
     [updateStatus],
   );
 
+  const onClear = useCallback(() => {
+    stopSpeech(audioRef.current);
+    setEnglish("");
+    setCurrent(null);
+    setTranslating(false);
+    updateStatus("Enter English, then Search.");
+  }, [updateStatus]);
+
   const onTranslate = useCallback(
     async (text: string) => {
       const value = text.trim();
@@ -139,7 +148,10 @@ export function TranslationApp() {
         );
         return;
       }
+      // Drop prior result immediately so old German/phonetics never linger.
+      stopSpeech(audioRef.current);
       setEnglish(value);
+      setCurrent(null);
       setTranslating(true);
       updateStatus("Translating…");
       try {
@@ -404,6 +416,13 @@ export function TranslationApp() {
               alwaysShowText
               disabled={!current || alreadySaved}
               onClick={onSave}
+            />
+            <Button
+              title="Clear"
+              icon={clearIcon}
+              alwaysShowText
+              disabled={!english && !current && !translating}
+              onClick={onClear}
             />
           </ButtonGroup>
         </div>

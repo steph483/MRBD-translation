@@ -1,7 +1,7 @@
 {
   "name": "mrbd-translation",
   "private": true,
-  "version": "1.3.0",
+  "version": "1.3.1",
   "type": "module",
   "description": "English to German translation helper for Meta Ray-Ban Display",
   "scripts": {
