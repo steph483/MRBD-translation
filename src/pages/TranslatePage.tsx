@@ -13,7 +13,11 @@ import {
 } from "@wearables-ui-toolkit/mrbd";
 import { loadSavedPhrases, persistSavedPhrases } from "../lib/storage";
 import { translateEnglish } from "../lib/translate";
-import { hearGerman, stopSpeech } from "../lib/tts";
+import {
+  playGermanNetworkTts,
+  playPhoneticSpeech,
+  stopSpeech,
+} from "../lib/tts";
 import type { Phrase, SavedPhrase } from "../lib/types";
 
 export function TranslatePage() {
@@ -90,21 +94,25 @@ export function TranslatePage() {
     [updateStatus],
   );
 
-  const onHear = useCallback(
-    async (preferPhonetic = false) => {
-      if (!current) return;
-      updateStatus(
-        preferPhonetic ? "Playing English sounds-like…" : "Playing German audio…",
-      );
-      const { status: nextStatus, result } = await hearGerman(
-        audioRef.current,
-        current,
-        { preferPhonetic },
-      );
-      updateStatus(nextStatus, result === "unavailable");
-    },
-    [current, updateStatus],
-  );
+  const onHearGerman = useCallback(async () => {
+    if (!current) return;
+    updateStatus("Playing German audio…");
+    const { status: nextStatus, isError } = await playGermanNetworkTts(
+      audioRef.current,
+      current.german,
+    );
+    updateStatus(nextStatus, isError);
+  }, [current, updateStatus]);
+
+  const onHearPhonetic = useCallback(async () => {
+    if (!current) return;
+    updateStatus("Playing English sounds-like…");
+    const { status: nextStatus, isError } = await playPhoneticSpeech(
+      audioRef.current,
+      current.phonetic,
+    );
+    updateStatus(nextStatus, isError);
+  }, [current, updateStatus]);
 
   const onSave = useCallback(() => {
     if (!current) return;
@@ -239,7 +247,7 @@ export function TranslatePage() {
               alwaysShowText
               disabled={!current}
               onClick={() => {
-                void onHear(false);
+                void onHearGerman();
               }}
             />
             <Button
@@ -247,7 +255,7 @@ export function TranslatePage() {
               alwaysShowText
               disabled={!current}
               onClick={() => {
-                void onHear(true);
+                void onHearPhonetic();
               }}
             />
             <Button

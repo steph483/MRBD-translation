@@ -111,63 +111,78 @@ function speakWithSynthesis(
   });
 }
 
-export type HearResult =
-  | "network-de"
-  | "speechSynthesis"
-  | "unavailable"
-  | "phonetic";
+export type PlayResult = "network-de" | "speechSynthesis" | "unavailable";
 
 /**
- * Prefer real German network TTS; fall back to visible phonetic + English TTS.
+ * Hear: German network TTS only — never falls back to speechSynthesis.
  */
-export async function hearGerman(
+export async function playGermanNetworkTts(
   audio: HTMLAudioElement | null,
-  phrase: { german: string; phonetic: string },
-  options: { preferPhonetic?: boolean } = {},
-): Promise<{ result: HearResult; status: string }> {
+  german: string,
+): Promise<{ result: PlayResult; status: string; isError: boolean }> {
   stopSpeech(audio);
-  if (!phrase.german) {
-    return { result: "unavailable", status: "Nothing to play." };
-  }
-
-  if (options.preferPhonetic) {
-    await speakWithSynthesis(phrase.phonetic || phrase.german, "en-US");
+  const text = german.trim();
+  if (!text) {
     return {
-      result: "phonetic",
-      status: "Played sounds-like (English voice).",
+      result: "unavailable",
+      status: "Nothing to play.",
+      isError: true,
+    };
+  }
+  if (!audio) {
+    return {
+      result: "unavailable",
+      status: "German audio player unavailable. Check the network and try again.",
+      isError: true,
     };
   }
 
-  if (!audio) {
-    try {
-      await speakWithSynthesis(phrase.phonetic || phrase.german, "en-US");
-      return {
-        result: "speechSynthesis",
-        status: "Played sounds-like fallback (English voice).",
-      };
-    } catch {
-      return {
-        result: "unavailable",
-        status: "Audio unavailable. Read the German and sounds-like text.",
-      };
-    }
+  try {
+    await playNetworkGerman(audio, text);
+    return {
+      result: "network-de",
+      status: "Played German audio.",
+      isError: false,
+    };
+  } catch {
+    return {
+      result: "unavailable",
+      status:
+        "German audio failed. Check your connection and try Hear again — or use Sounds-like.",
+      isError: true,
+    };
+  }
+}
+
+/**
+ * Sounds-like: always browser speechSynthesis on the English phonetic text.
+ */
+export async function playPhoneticSpeech(
+  audio: HTMLAudioElement | null,
+  phonetic: string,
+): Promise<{ result: PlayResult; status: string; isError: boolean }> {
+  stopSpeech(audio);
+  const text = phonetic.trim();
+  if (!text) {
+    return {
+      result: "unavailable",
+      status: "No sounds-like text to play.",
+      isError: true,
+    };
   }
 
   try {
-    await playNetworkGerman(audio, phrase.german);
-    return { result: "network-de", status: "Played German audio." };
+    await speakWithSynthesis(text, "en-US");
+    return {
+      result: "speechSynthesis",
+      status: "Played sounds-like (English voice).",
+      isError: false,
+    };
   } catch {
-    try {
-      await speakWithSynthesis(phrase.phonetic || phrase.german, "en-US");
-      return {
-        result: "speechSynthesis",
-        status: "German TTS unavailable — played sounds-like.",
-      };
-    } catch {
-      return {
-        result: "unavailable",
-        status: "Audio unavailable. Read the German and sounds-like text.",
-      };
-    }
+    return {
+      result: "unavailable",
+      status: "Sounds-like speech failed. Read the phonetic text on screen.",
+      isError: true,
+    };
   }
 }
