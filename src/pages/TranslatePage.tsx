@@ -96,22 +96,44 @@ export function TranslatePage() {
 
   const onHearGerman = useCallback(async () => {
     if (!current) return;
+    const phrase = current.german;
     updateStatus("Playing German audio…");
-    const { status: nextStatus, isError } = await playGermanNetworkTts(
-      audioRef.current,
-      current.german,
-    );
-    updateStatus(nextStatus, isError);
+    try {
+      const { status: nextStatus, isError } = await playGermanNetworkTts(
+        audioRef.current,
+        phrase,
+      );
+      // Ignore superseded plays so a newer Hear owns the status line
+      if (nextStatus === "Superseded by a newer Hear.") return;
+      updateStatus(nextStatus, isError);
+    } catch (err) {
+      updateStatus(
+        err instanceof Error
+          ? `German Hear failed — ${err.message}`
+          : "German Hear failed.",
+        true,
+      );
+    }
   }, [current, updateStatus]);
 
   const onHearPhonetic = useCallback(async () => {
     if (!current) return;
     updateStatus("Playing English sounds-like…");
-    const { status: nextStatus, isError } = await playPhoneticSpeech(
-      audioRef.current,
-      current.phonetic,
-    );
-    updateStatus(nextStatus, isError);
+    try {
+      const { status: nextStatus, isError } = await playPhoneticSpeech(
+        audioRef.current,
+        current.phonetic,
+      );
+      if (nextStatus === "Superseded by a newer play.") return;
+      updateStatus(nextStatus, isError);
+    } catch (err) {
+      updateStatus(
+        err instanceof Error
+          ? `Sounds-like failed — ${err.message}`
+          : "Sounds-like failed.",
+        true,
+      );
+    }
   }, [current, updateStatus]);
 
   const onSave = useCallback(() => {
