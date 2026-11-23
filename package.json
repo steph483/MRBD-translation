@@ -1,0 +1,15 @@
+{
+  "name": "mrbd-translation",
+  "private": true,
+  "version": "1.0.0",
+  "description": "English to German translation helper for Meta Ray-Ban Display",
+  "scripts": {
+    "preview": "npx --yes serve -l 4173 .",
+    "smoke": "node ./scripts/smoke-600.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/steph483/MRBD-translation.git"
+  },
+  "license": "MIT"
+}
