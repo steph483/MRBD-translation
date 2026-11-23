@@ -13,6 +13,7 @@ import {
   InputTextView,
   ListItem,
   SubNavigationPager,
+  SubtitleTextColor,
   TextColor,
   TextStyle,
   TextView,
@@ -291,7 +292,9 @@ export function TranslationApp() {
               ]}
             >
               <ListItem
-                title={`Translation: ${phrase.german}`}
+                title={phrase.english}
+                subtitle={phrase.german}
+                subtitleTextColor={SubtitleTextColor.SECONDARY}
                 onClick={() => onUseSaved(phrase)}
               />
             </SwipeToDelete>
