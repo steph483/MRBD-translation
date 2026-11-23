@@ -23,14 +23,11 @@ Open `http://localhost:4173` and set DevTools to **600 × 600**.
 
 ## GitHub Pages
 
-After this repo is on `main`, enable Pages:
+Live URL:
 
-1. Repo **Settings → Pages**
-2. Source: **GitHub Actions** (workflow included), **or** Deploy from branch `main` / `/ (root)`
+**https://steph483.github.io/MRBD-translation/**
 
-Expected URL:
-
-`https://steph483.github.io/MRBD-translation/`
+Hosting is **Deploy from branch `main` / `/ (root)`** (with `.nojekyll`). An Actions workflow is also present if you switch Pages source to GitHub Actions later.
 
 ## Add on Meta Ray-Ban Display
 
