@@ -58,6 +58,23 @@ body,
   min-inline-size: 0;
 }
 
+.german-karaoke {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.karaoke-word {
+  display: inline;
+  transition:
+    color 120ms ease,
+    font-size 120ms ease;
+}
+
+.karaoke-gap {
+  white-space: pre-wrap;
+}
+
 .action-dock {
   min-inline-size: 0;
   padding-block-start: var(--uit-spacing-2xs);

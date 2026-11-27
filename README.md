@@ -10,7 +10,7 @@ English → German helper for **Meta Ray-Ban Display**, built with Vite + React 
 - **Settings:** source/target language pickers + reading-speed slider (Hear + Sounds like); persisted in `localStorage` (only EN→DE translates today)
 - Free MyMemory translate API (no paid keys)
 - English phonetic “sounds like” respelling of the German
-- **Hear:** German device voice (`de-*`) when available, else CORS-friendly Lingva network TTS (cached in memory). Never English phonetic on Hear.
+- **Hear:** German device voice (`de-*`) when available, else CORS-friendly Lingva network TTS (cached in memory). Never English phonetic on Hear. While German plays, the translation highlights the active word (speechSynthesis `boundary` when available; duration × word progress for network audio).
 - **Sounds-like:** English `speechSynthesis` reading the phonetic respelling
 - Status uses smaller toolkit typography (`META2`)
 

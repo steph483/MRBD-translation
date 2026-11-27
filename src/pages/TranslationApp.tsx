@@ -20,6 +20,7 @@ import {
   VerticalList,
   type ButtonHandle,
 } from "@wearables-ui-toolkit/mrbd";
+import { GermanKaraokeText } from "../components/GermanKaraokeText";
 import { SwipeToDelete } from "../components/SwipeToDelete";
 import {
   clearIcon,
@@ -69,6 +70,8 @@ export function TranslationApp() {
   const [status, setStatus] = useState("Enter English, then Search.");
   const [statusError, setStatusError] = useState(false);
   const [translating, setTranslating] = useState(false);
+  /** Karaoke active word while German Hear plays; null when idle. */
+  const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const audio = new Audio();
@@ -126,13 +129,18 @@ export function TranslationApp() {
     [updateStatus],
   );
 
+  const clearHighlight = useCallback(() => {
+    setActiveWordIndex(null);
+  }, []);
+
   const onClear = useCallback(() => {
     stopSpeech(audioRef.current);
+    clearHighlight();
     setEnglish("");
     setCurrent(null);
     setTranslating(false);
     updateStatus("Enter English, then Search.");
-  }, [updateStatus]);
+  }, [clearHighlight, updateStatus]);
 
   const onTranslate = useCallback(
     async (text: string) => {
@@ -150,6 +158,7 @@ export function TranslationApp() {
       }
       // Drop prior result immediately so old German/phonetics never linger.
       stopSpeech(audioRef.current);
+      clearHighlight();
       setEnglish(value);
       setCurrent(null);
       setTranslating(true);
@@ -168,22 +177,28 @@ export function TranslationApp() {
         setTranslating(false);
       }
     },
-    [pairLabel, pairSupported, updateStatus],
+    [clearHighlight, pairLabel, pairSupported, updateStatus],
   );
 
   const onHearGerman = useCallback(async () => {
     if (!current) return;
     const phrase = current.german;
+    clearHighlight();
     updateStatus("Playing German audio…");
     try {
       const { status: nextStatus, isError } = await playGermanNetworkTts(
         audioRef.current,
         phrase,
-        settings.readingSpeed,
+        {
+          rate: settings.readingSpeed,
+          onWordHighlight: setActiveWordIndex,
+        },
       );
+      clearHighlight();
       if (nextStatus === "Superseded by a newer Hear.") return;
       updateStatus(nextStatus, isError);
     } catch (err) {
+      clearHighlight();
       updateStatus(
         err instanceof Error
           ? `German Hear failed — ${err.message}`
@@ -191,10 +206,12 @@ export function TranslationApp() {
         true,
       );
     }
-  }, [current, settings.readingSpeed, updateStatus]);
+  }, [clearHighlight, current, settings.readingSpeed, updateStatus]);
 
   const onHearPhonetic = useCallback(async () => {
     if (!current) return;
+    // Sounds like is not karaoke yet — clear any German highlight.
+    clearHighlight();
     updateStatus("Playing English sounds-like…");
     try {
       const { status: nextStatus, isError } = await playPhoneticSpeech(
@@ -212,7 +229,7 @@ export function TranslationApp() {
         true,
       );
     }
-  }, [current, settings.readingSpeed, updateStatus]);
+  }, [clearHighlight, current, settings.readingSpeed, updateStatus]);
 
   const onSave = useCallback(() => {
     if (!current) return;
@@ -364,9 +381,10 @@ export function TranslationApp() {
               >
                 German
               </TextView>
-              <TextView as="p" textStyle={TextStyle.BODY1_EMPHASIZED}>
-                {current.german}
-              </TextView>
+              <GermanKaraokeText
+                text={current.german}
+                activeWordIndex={activeWordIndex}
+              />
               <TextView
                 as="p"
                 textStyle={TextStyle.META3}

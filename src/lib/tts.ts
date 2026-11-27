@@ -1,3 +1,10 @@
+import {
+  tokenizeWords,
+  wordIndexAtChar,
+  wordIndexAtProgress,
+  type WordSpan,
+} from "./words";
+
 /** In-memory cache of successful German TTS as Blobs (not object URLs). */
 const germanAudioCache = new Map<string, Blob>();
 
@@ -13,6 +20,14 @@ type StepError = { step: string; detail: string };
 /** Bumps on every Hear/Sounds-like so stale async work can bail out. */
 let playbackGeneration = 0;
 
+/** Karaoke word index while German Hear plays; null clears. */
+export type WordHighlightHandler = (wordIndex: number | null) => void;
+
+export type GermanPlayOptions = {
+  rate?: number;
+  onWordHighlight?: WordHighlightHandler;
+};
+
 function formatErrors(errors: StepError[]): string {
   if (!errors.length) return "unknown";
   return errors.map((e) => `${e.step}: ${e.detail}`).join(" | ");
@@ -24,6 +39,8 @@ function errDetail(err: unknown): string {
 }
 
 export function stopSpeech(audio: HTMLAudioElement | null): void {
+  // Supersede in-flight Hear/Sounds-like so stale boundary/timeupdate can't paint.
+  playbackGeneration += 1;
   if (audio) {
     try {
       audio.pause();
@@ -92,10 +109,25 @@ function clampRate(rate: number | undefined): number {
   return Math.min(1.5, Math.max(0.5, rate));
 }
 
+function emitWord(
+  onWordHighlight: WordHighlightHandler | undefined,
+  stillCurrent: () => boolean,
+  wordIndex: number | null,
+): void {
+  if (!onWordHighlight || !stillCurrent()) return;
+  onWordHighlight(wordIndex);
+}
+
+/**
+ * speechSynthesis German path — prefer `boundary` events; fall back to
+ * equal-time word ticks if the engine never fires boundaries.
+ */
 function speakGermanText(
   text: string,
   voice: SpeechSynthesisVoice | null,
   rate = 1,
+  onWordHighlight?: WordHighlightHandler,
+  stillCurrent: () => boolean = () => true,
 ): Promise<"voice-de"> {
   return new Promise((resolve, reject) => {
     if (
@@ -108,22 +140,71 @@ function speakGermanText(
 
     window.speechSynthesis.cancel();
 
+    const tokens = tokenizeWords(text);
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = voice?.lang || "de-DE";
     if (voice) utterance.voice = voice;
-    utterance.rate = clampRate(rate) * 0.95;
+    const playRate = clampRate(rate);
+    utterance.rate = playRate * 0.95;
 
     let settled = false;
+    let sawBoundary = false;
+    let fallbackTimer = 0;
+    let tickTimer = 0;
+    let lastIndex = -1;
+
+    const clearTimers = () => {
+      window.clearTimeout(fallbackTimer);
+      window.clearInterval(tickTimer);
+    };
+
+    const paint = (index: number | null) => {
+      if (index === lastIndex) return;
+      lastIndex = index ?? -2;
+      emitWord(onWordHighlight, stillCurrent, index);
+    };
+
     const settle = (fn: () => void) => {
       if (settled) return;
       settled = true;
+      clearTimers();
       window.clearTimeout(watchdog);
+      paint(null);
       fn();
+    };
+
+    const startFallbackTicks = () => {
+      if (sawBoundary || !tokens.length || !onWordHighlight) return;
+      const msPerWord = Math.max(180, 420 / playRate);
+      let i = 0;
+      paint(0);
+      tickTimer = window.setInterval(() => {
+        if (!stillCurrent() || settled) {
+          window.clearInterval(tickTimer);
+          return;
+        }
+        i += 1;
+        if (i >= tokens.length) {
+          window.clearInterval(tickTimer);
+          return;
+        }
+        paint(i);
+      }, msPerWord);
     };
 
     const watchdog = window.setTimeout(() => {
       settle(() => reject(new Error("speechSynthesis timeout")));
     }, 12000);
+
+    utterance.onboundary = (event: SpeechSynthesisEvent) => {
+      if (!stillCurrent() || settled) return;
+      // Chromium: word boundaries; some engines omit `name`.
+      if (event.name && event.name !== "word") return;
+      if (typeof event.charIndex !== "number") return;
+      sawBoundary = true;
+      clearTimers();
+      paint(wordIndexAtChar(tokens, event.charIndex));
+    };
 
     utterance.onend = () => settle(() => resolve("voice-de"));
     utterance.onerror = (event) =>
@@ -132,6 +213,10 @@ function speakGermanText(
       );
 
     try {
+      if (onWordHighlight && tokens.length) {
+        // If boundary never arrives (common on some engines), approximate.
+        fallbackTimer = window.setTimeout(startFallbackTicks, 280);
+      }
       window.speechSynthesis.speak(utterance);
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
@@ -168,16 +253,27 @@ function speakEnglishPhonetic(
 /**
  * Play a Blob via a fresh object URL each time so replays never reuse a
  * revoked/stale URL, and the Audio element always gets a new load cycle.
+ * Word highlight uses duration × weighted word progress.
  */
 function playBlob(
   audio: HTMLAudioElement,
   blob: Blob,
   rate = 1,
+  tokens: readonly WordSpan[] = [],
+  onWordHighlight?: WordHighlightHandler,
+  stillCurrent: () => boolean = () => true,
 ): Promise<"audio"> {
   const objectUrl = URL.createObjectURL(blob);
 
   return new Promise((resolve, reject) => {
     let settled = false;
+    let lastIndex = -1;
+
+    const paint = (index: number | null) => {
+      if (index === lastIndex) return;
+      lastIndex = index ?? -2;
+      emitWord(onWordHighlight, stillCurrent, index);
+    };
 
     const settle = (fn: () => void) => {
       if (settled) return;
@@ -185,15 +281,29 @@ function playBlob(
       window.clearTimeout(watchdog);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("loadedmetadata", onMeta);
       try {
         audio.playbackRate = 1;
       } catch {
         /* ignore */
       }
+      paint(null);
       // Revoke after this play finishes; next Hear creates a new URL from Blob cache.
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
       fn();
     };
+
+    const syncFromTime = () => {
+      if (!stillCurrent() || settled || !tokens.length) return;
+      const dur = audio.duration;
+      if (!Number.isFinite(dur) || dur <= 0) return;
+      const progress = Math.min(1, Math.max(0, audio.currentTime / dur));
+      paint(wordIndexAtProgress(tokens, progress));
+    };
+
+    const onTimeUpdate = () => syncFromTime();
+    const onMeta = () => syncFromTime();
 
     const onEnded = () => settle(() => resolve("audio"));
     const onError = () => {
@@ -208,6 +318,8 @@ function playBlob(
 
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onError);
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("loadedmetadata", onMeta);
 
     try {
       audio.pause();
@@ -276,10 +388,13 @@ async function playNetworkGermanWithCache(
   german: string,
   errors: StepError[],
   rate = 1,
+  tokens: readonly WordSpan[] = [],
+  onWordHighlight?: WordHighlightHandler,
+  stillCurrent: () => boolean = () => true,
 ): Promise<"network-de"> {
   const cached = getCachedBlob(german);
   if (cached) {
-    await playBlob(audio, cached, rate);
+    await playBlob(audio, cached, rate, tokens, onWordHighlight, stillCurrent);
     return "network-de";
   }
 
@@ -289,7 +404,7 @@ async function playNetworkGermanWithCache(
     try {
       const blob = await fetchLingvaMp3(host, german);
       putCachedBlob(german, blob);
-      await playBlob(audio, blob, rate);
+      await playBlob(audio, blob, rate, tokens, onWordHighlight, stillCurrent);
       return "network-de";
     } catch (err) {
       lastError = err;
@@ -314,19 +429,28 @@ export type PlayResult =
 export async function playGermanNetworkTts(
   audio: HTMLAudioElement | null,
   german: string,
-  rate = 1,
+  rateOrOptions: number | GermanPlayOptions = 1,
 ): Promise<{ result: PlayResult; status: string; isError: boolean }> {
-  const generation = ++playbackGeneration;
+  const options: GermanPlayOptions =
+    typeof rateOrOptions === "number"
+      ? { rate: rateOrOptions }
+      : rateOrOptions;
+  const playRate = clampRate(options.rate);
+  const onWordHighlight = options.onWordHighlight;
+
+  // Capture generation after stopSpeech so Clear/supersede can't race us stale.
+  stopSpeech(audio);
+  const generation = playbackGeneration;
   const stillCurrent = () => generation === playbackGeneration;
-  const playRate = clampRate(rate);
 
   const text = german.trim();
+  const tokens = tokenizeWords(text);
   if (!text) {
+    onWordHighlight?.(null);
     return { result: "unavailable", status: "Nothing to play.", isError: true };
   }
 
   const errors: StepError[] = [];
-  stopSpeech(audio);
 
   const done = (
     result: PlayResult,
@@ -340,6 +464,7 @@ export async function playGermanNetworkTts(
         isError: false,
       };
     }
+    emitWord(onWordHighlight, stillCurrent, null);
     return { result, status, isError };
   };
 
@@ -349,7 +474,14 @@ export async function playGermanNetworkTts(
       const cached = getCachedBlob(text);
       if (cached) {
         try {
-          await playBlob(audio, cached, playRate);
+          await playBlob(
+            audio,
+            cached,
+            playRate,
+            tokens,
+            onWordHighlight,
+            stillCurrent,
+          );
           return done("network-de", "Played German audio (cached).", false);
         } catch (err) {
           // Drop bad cache entry and continue
@@ -371,7 +503,13 @@ export async function playGermanNetworkTts(
     // 1) Named German voice when listed
     if (deVoice) {
       try {
-        await speakGermanText(text, deVoice, playRate);
+        await speakGermanText(
+          text,
+          deVoice,
+          playRate,
+          onWordHighlight,
+          stillCurrent,
+        );
         return done(
           "voice-de",
           `Played German (device: ${deVoice.lang}/${deVoice.name}).`,
@@ -394,11 +532,21 @@ export async function playGermanNetworkTts(
     // 2) Network Lingva
     const tryNetwork = async (): Promise<"network-de"> => {
       if (!audio) throw new Error("audio element missing");
-      return playNetworkGermanWithCache(audio, text, errors, playRate);
+      return playNetworkGermanWithCache(
+        audio,
+        text,
+        errors,
+        playRate,
+        tokens,
+        onWordHighlight,
+        stillCurrent,
+      );
     };
 
     try {
-      stopSpeech(audio);
+      if (!stillCurrent()) {
+        return done("unavailable", "Superseded by a newer Hear.", false);
+      }
       await tryNetwork();
       return done("network-de", "Played German audio (Lingva).", false);
     } catch (err) {
@@ -416,7 +564,6 @@ export async function playGermanNetworkTts(
     }
 
     try {
-      stopSpeech(audio);
       await tryNetwork();
       return done("network-de", "Played German audio (Lingva retry).", false);
     } catch (err) {
@@ -429,8 +576,7 @@ export async function playGermanNetworkTts(
 
     // 4) lang=de-DE speechSynthesis on German text
     try {
-      stopSpeech(audio);
-      await speakGermanText(text, null, playRate);
+      await speakGermanText(text, null, playRate, onWordHighlight, stillCurrent);
       return done(
         "voice-de",
         "Played German (speechSynthesis lang=de-DE fallback).",
@@ -463,8 +609,8 @@ export async function playPhoneticSpeech(
   phonetic: string,
   rate = 1,
 ): Promise<{ result: PlayResult; status: string; isError: boolean }> {
-  const generation = ++playbackGeneration;
   stopSpeech(audio);
+  const generation = playbackGeneration;
   const text = phonetic.trim();
   if (!text) {
     return {
